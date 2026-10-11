@@ -2,6 +2,7 @@
   "name": "understand-git",
   "version": "1.0.0",
   "description": "Explain every diff block of a commit in your own words, graded by Claude Code.",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "start": "node server.js"

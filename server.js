@@ -141,12 +141,18 @@ async function getDiff(root, commit) {
 
 // ---------- Claude Code ----------
 
+// The native installer puts claude in ~/.local/bin, which is often missing from PATH
+// (not added at all, or added after this process's parent started). Append it as a fallback.
+const claudeEnv = { ...process.env };
+const pathKey = Object.keys(claudeEnv).find((k) => k.toLowerCase() === 'path') || 'PATH';
+claudeEnv[pathKey] = [claudeEnv[pathKey], path.join(os.homedir(), '.local', 'bin')].filter(Boolean).join(path.delimiter);
+
 function askClaude(prompt) {
   return new Promise((resolve, reject) => {
     // The prompt goes over stdin so nothing from a diff or an answer ever reaches the shell.
     // shell:true is needed on Windows, where `claude` may be a .cmd shim.
     const child = spawn(`${CLAUDE_CMD} -p --output-format json --model ${CLAUDE_MODEL} --max-turns 1`,
-      { shell: true, cwd: os.tmpdir(), windowsHide: true });
+      { shell: true, cwd: os.tmpdir(), windowsHide: true, env: claudeEnv });
     let out = '';
     let err = '';
     const timer = setTimeout(() => child.kill(), CLAUDE_TIMEOUT_MS);

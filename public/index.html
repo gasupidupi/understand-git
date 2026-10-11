@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>understand-git</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --border: #d5d9e0;
+    --text: #1c2128;
+    --muted: #667080;
+    --accent: #3b6fd4;
+    --good: #1f9d55;
+    --bad: #d93025;
+    --add-bg: #e3f6e8;
+    --del-bg: #fde7e6;
+    --hunk-bg: #eef2f8;
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c;
+      --surface: #1d2128;
+      --border: #333a45;
+      --text: #e3e7ee;
+      --muted: #8f99a8;
+      --accent: #7aa5f5;
+      --good: #3fc47a;
+      --bad: #f2695e;
+      --add-bg: #173524;
+      --del-bg: #40201f;
+      --hunk-bg: #232a35;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .55; cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  #confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+  header {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+  }
+  .pickers { display: grid; grid-template-columns: 2fr 1fr 2fr; gap: 12px; max-width: 1100px; margin: 0 auto; }
+  .pickers label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .pickers input, .pickers select {
+    width: 100%; min-width: 0; padding: 6px 8px;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+  }
+  .folder { display: flex; gap: 6px; }
+  .progress { display: flex; align-items: center; gap: 10px; max-width: 1100px; margin: 10px auto 0; font-size: 13px; color: var(--muted); }
+  .progress progress { flex: 1; height: 6px; accent-color: var(--good); }
+
+  main { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .notice { color: var(--muted); text-align: center; padding: 60px 0; }
+  .notice.error { color: var(--bad); }
+  .done-banner {
+    margin-bottom: 20px; padding: 14px 18px; border-radius: 8px;
+    border: 1px solid var(--good); background: var(--surface); font-weight: 600; text-align: center;
+  }
+  .skipped { color: var(--muted); font-size: 13px; }
+
+  .block { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 24px; overflow: hidden; }
+  .file { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 13.5px; }
+  .file .path { overflow-wrap: anywhere; }
+  .file .dir { color: var(--muted); }
+  .file .name { font-weight: 700; }
+  .file .tag { font: 11px system-ui, sans-serif; padding: 1px 7px; border: 1px solid var(--border); border-radius: 10px; color: var(--muted); }
+  .file .count { margin-left: auto; font: 12px system-ui, sans-serif; color: var(--muted); }
+
+  .diff { overflow: auto; max-height: 70vh; font-family: var(--mono); font-size: 13px; line-height: 1.45; }
+  .diff-inner { display: inline-block; min-width: 100%; vertical-align: top; }
+  .line { display: flex; white-space: pre; }
+  .line .num { flex: none; width: 46px; padding-right: 8px; text-align: right; color: var(--muted); user-select: none; }
+  .line .code { padding: 0 12px 0 4px; }
+  .line.add { background: var(--add-bg); }
+  .line.del { background: var(--del-bg); }
+  .line.hunk { background: var(--hunk-bg); color: var(--muted); }
+  .line.meta { color: var(--muted); font-style: italic; }
+
+  .answer { padding: 12px 14px; border-top: 1px solid var(--border); }
+  .answer textarea {
+    display: block; width: 100%; resize: none; overflow: hidden;
+    padding: 8px 10px; border: 2px solid var(--border); border-radius: 6px; background: var(--bg);
+  }
+  .answer textarea.wrong { border-color: var(--bad); }
+  .answer textarea.correct { border-color: var(--good); }
+  .answer .row { display: flex; align-items: center; gap: 12px; min-height: 0; }
+  .answer .row > * { margin-top: 8px; }
+  .answer .status { font-size: 13px; color: var(--muted); }
+  .answer .status.error { color: var(--bad); }
+  .explanation {
+    margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--accent);
+    background: var(--bg); border-radius: 0 6px 6px 0; white-space: pre-wrap;
+    user-select: none; /* it has to be typed, not copied */
+  }
+
+  dialog { width: min(560px, 92vw); padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); }
+  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  .dlg-head { display: flex; gap: 8px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .dlg-head .where { flex: 1; font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  .dlg-list { height: 340px; overflow: auto; padding: 6px; }
+  .dlg-list button { display: flex; justify-content: space-between; width: 100%; border: 0; background: none; text-align: left; padding: 6px 10px; }
+  .dlg-list button:hover { background: var(--bg); }
+  .dlg-list .repo { font-size: 11px; color: var(--good); }
+  .dlg-list .empty { padding: 10px; color: var(--muted); }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+
+  @media (max-width: 720px) { .pickers { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+
+<header>
+  <div class="pickers">
+    <div>
+      <label for="path">Folder</label>
+      <div class="folder">
+        <input id="path" placeholder="Path to a git repository" spellcheck="false" autocomplete="off">
+        <button id="browse" type="button">Browse…</button>
+      </div>
+    </div>
+    <div>
+      <label for="branch">Branch</label>
+      <select id="branch" disabled></select>
+    </div>
+    <div>
+      <label for="commit">Commit</label>
+      <select id="commit" disabled></select>
+    </div>
+  </div>
+  <div class="progress" id="progress" hidden>
+    <span id="progress-text"></span>
+    <progress id="progress-bar" value="0" max="1"></progress>
+  </div>
+</header>
+
+<main id="main"><p class="notice">Choose a folder containing a git repository to begin.</p></main>
+
+<dialog id="picker">
+  <div class="dlg-head">
+    <button id="picker-up" type="button" aria-label="Parent folder">↑ Up</button>
+    <span class="where" id="picker-where"></span>
+  </div>
+  <div class="dlg-list" id="picker-list"></div>
+  <div class="dlg-foot">
+    <button id="picker-cancel" type="button">Cancel</button>
+    <button id="picker-select" type="button" class="primary">Select this folder</button>
+  </div>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+};
+
+const state = { root: null, commit: null, blocks: [] };
+let loadSeq = 0; // guards against out-of-order responses when selections change quickly
+
+async function api(url, body) {
+  const res = await fetch(url, body && {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function store(key, value) {
+  try {
+    if (value === undefined) return JSON.parse(localStorage.getItem(key));
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch { /* storage unavailable: progress just isn't remembered */ }
+  return null;
+}
+
+function showNotice(text, isError) {
+  $('main').replaceChildren(el('p', isError ? 'notice error' : 'notice', text));
+  $('progress').hidden = true;
+}
+
+// ---------- folder / branch / commit ----------
+
+async function loadRepo(path) {
+  const seq = ++loadSeq;
+  state.root = state.commit = null;
+  $('branch').disabled = $('commit').disabled = true;
+  $('branch').replaceChildren();
+  $('commit').replaceChildren();
+  showNotice('Loading repository…');
+  try {
+    const repo = await api('/api/repo?path=' + encodeURIComponent(path));
+    if (seq !== loadSeq) return;
+    state.root = repo.root;
+    $('path').value = repo.root;
+    store('understand:lastFolder', repo.root);
+    $('branch').replaceChildren(...repo.branches.map((b) => new Option(b === 'HEAD' ? 'HEAD (detached)' : b, b)));
+    $('branch').value = repo.current;
+    $('branch').disabled = false;
+    await loadCommits();
+  } catch (e) {
+    if (seq === loadSeq) showNotice(e.message, true);
+  }
+}
+
+async function loadCommits() {
+  const seq = ++loadSeq;
+  $('commit').disabled = true;
+  showNotice('Loading commits…');
+  try {
+    const { commits } = await api(`/api/commits?path=${encodeURIComponent(state.root)}&branch=${encodeURIComponent($('branch').value)}`);
+    if (seq !== loadSeq) return;
+    $('commit').replaceChildren(...commits.map((c) => new Option(`${c.short} · ${c.date} · ${c.subject}`, c.hash)));
+    $('commit').disabled = false; // newest commit is first, so it is selected by default
+    await loadDiff();
+  } catch (e) {
+    if (seq === loadSeq) showNotice(e.message, true);
+  }
+}
+
+async function loadDiff() {
+  const seq = ++loadSeq;
+  const commit = $('commit').value;
+  showNotice('Loading diff…');
+  try {
+    const data = await api(`/api/diff?path=${encodeURIComponent(state.root)}&commit=${commit}`);
+    if (seq !== loadSeq) return;
+    state.commit = commit;
+    renderDiff(data);
+  } catch (e) {
+    if (seq === loadSeq) showNotice(e.message, true);
+  }
+}
+
+$('path').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && $('path').value.trim()) loadRepo($('path').value.trim());
+});
+$('branch').addEventListener('change', loadCommits);
+$('commit').addEventListener('change', loadDiff);
+
+// ---------- folder picker ----------
+
+let pickerDir = null;
+
+async function browseTo(path) {
+  let dir;
+  try {
+    dir = await api('/api/browse?path=' + encodeURIComponent(path || ''));
+  } catch (e) {
+    if (path) return browseTo(''); // typed path doesn't exist: fall back to the home folder
+    $('picker-list').replaceChildren(el('div', 'empty', e.message));
+    return;
+  }
+  pickerDir = dir;
+  $('picker-where').textContent = dir.label;
+  $('picker-up').disabled = dir.parent == null;
+  $('picker-select').disabled = !dir.path;
+  const rows = dir.dirs.map((d) => {
+    const row = el('button');
+    row.type = 'button';
+    row.append(el('span', '', d.name));
+    if (d.isRepo) row.append(el('span', 'repo', 'git repo'));
+    row.addEventListener('click', () => browseTo(d.path));
+    return row;
+  });
+  $('picker-list').replaceChildren(...(rows.length ? rows : [el('div', 'empty', 'No subfolders.')]));
+  $('picker-list').scrollTop = 0;
+}
+
+$('browse').addEventListener('click', () => {
+  $('picker').showModal();
+  browseTo($('path').value.trim());
+});
+$('picker-up').addEventListener('click', () => browseTo(pickerDir.parent));
+$('picker-cancel').addEventListener('click', () => $('picker').close());
+$('picker-select').addEventListener('click', () => {
+  $('picker').close();
+  loadRepo(pickerDir.path);
+});
+
+// ---------- diff blocks ----------
+
+const STATUS_LABEL = { added: 'new file', deleted: 'deleted', renamed: 'renamed' };
+const progressKey = () => `understand:${state.root}:${state.commit}`;
+
+function renderDiff(data) {
+  const saved = store(progressKey()) || {};
+  const nodes = [];
+  state.blocks = data.blocks.map((block) => {
+    const b = { ...block, correct: false, busy: false, attempts: [] };
+    nodes.push(renderBlock(b));
+    if (saved[b.id]) {
+      b.ta.value = saved[b.id];
+      lock(b);
+    }
+    return b;
+  });
+  if (data.skipped.length) {
+    nodes.push(el('p', 'skipped', 'Not quizzed: ' + data.skipped.map((s) => `${s.path} (${s.reason})`).join(', ')));
+  }
+  if (!state.blocks.length) nodes.unshift(el('p', 'notice', 'This commit has no text changes to explain.'));
+  $('main').replaceChildren(...nodes);
+  state.blocks.forEach((b) => autoGrow(b.ta));
+  updateProgress(false);
+}
+
+function renderBlock(b) {
+  const section = el('section', 'block');
+
+  const file = el('div', 'file');
+  const slash = b.file.lastIndexOf('/') + 1;
+  const path = el('span', 'path');
+  path.append(el('span', 'dir', b.file.slice(0, slash)), el('span', 'name', b.file.slice(slash)));
+  file.append(path);
+  if (STATUS_LABEL[b.status]) file.append(el('span', 'tag', b.oldPath ? `renamed from ${b.oldPath}` : STATUS_LABEL[b.status]));
+  if (b.hunkCount > 1) file.append(el('span', 'count', `block ${b.hunkIndex + 1} of ${b.hunkCount} in this file`));
+
+  const inner = el('div', 'diff-inner');
+  const addLine = (cls, oldNo, newNo, text) => {
+    const line = el('div', 'line ' + cls);
+    line.append(el('span', 'num', oldNo), el('span', 'num', newNo), el('span', 'code', text));
+    inner.append(line);
+  };
+  const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(b.header);
+  let oldNo = m ? +m[1] : 0;
+  let newNo = m ? +m[2] : 0;
+  addLine('hunk', '', '', b.header);
+  for (const raw of b.lines) {
+    const text = raw.replace(/\r$/, '');
+    if (text[0] === '+') addLine('add', '', newNo++, text);
+    else if (text[0] === '-') addLine('del', oldNo++, '', text);
+    else if (text[0] === '\\') addLine('meta', '', '', text);
+    else addLine('ctx', oldNo++, newNo++, text);
+  }
+  const diff = el('div', 'diff');
+  diff.append(inner);
+
+  const answer = el('div', 'answer');
+  b.ta = el('textarea');
+  b.ta.rows = 1;
+  b.ta.placeholder = 'What does this change do? Type your explanation and press Enter.';
+  b.ta.setAttribute('aria-label', `Explain the change in ${b.file}`);
+  b.ta.addEventListener('input', () => autoGrow(b.ta));
+  b.ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      submit(b);
+    }
+  });
+  // The point is to phrase it yourself, so no pasting or dropping text in.
+  b.ta.addEventListener('paste', (e) => e.preventDefault());
+  b.ta.addEventListener('drop', (e) => e.preventDefault());
+
+  const row = el('div', 'row');
+  b.status = el('span', 'status');
+  b.status.setAttribute('role', 'status');
+  b.explainBtn = el('button', '', 'Explain it to me');
+  b.explainBtn.type = 'button';
+  b.explainBtn.hidden = true;
+  b.explainBtn.addEventListener('click', () => requestExplanation(b));
+  row.append(b.explainBtn, b.status);
+  b.explanation = el('p', 'explanation');
+  b.explanation.hidden = true;
+  answer.append(b.ta, row, b.explanation);
+
+  section.append(file, diff, answer);
+  return section;
+}
+
+function autoGrow(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 2 + 'px';
+}
+
+function setStatus(b, text, isError) {
+  b.status.textContent = text;
+  b.status.className = isError ? 'status error' : 'status';
+}
+
+function lock(b) {
+  b.correct = true;
+  b.ta.readOnly = true;
+  b.ta.classList.remove('wrong');
+  b.ta.classList.add('correct');
+  b.explainBtn.hidden = true;
+}
+
+async function submit(b) {
+  const answer = b.ta.value.trim();
+  if (!answer || b.busy || b.correct) return;
+  const { root, commit } = state;
+  b.busy = true;
+  b.ta.readOnly = true;
+  b.ta.classList.remove('wrong');
+  setStatus(b, 'Claude is evaluating…');
+  try {
+    const { correct } = await api('/api/evaluate', { path: root, commit, block: b.id, answer });
+    if (correct) {
+      lock(b);
+      setStatus(b, '');
+      store(progressKey(), { ...store(progressKey()), [b.id]: answer });
+      updateProgress(true);
+      const next = state.blocks.find((x) => !x.correct);
+      if (next) next.ta.focus({ preventScroll: false });
+    } else {
+      b.ta.classList.add('wrong');
+      b.attempts.push(answer);
+      if (b.explanation.hidden) b.explainBtn.hidden = false;
+      setStatus(b, 'Not quite — try again.');
+    }
+  } catch (e) {
+    setStatus(b, e.message, true);
+  } finally {
+    b.busy = false;
+    if (!b.correct) {
+      b.ta.readOnly = false;
+      b.ta.focus();
+    }
+  }
+}
+
+async function requestExplanation(b) {
+  const { root, commit } = state;
+  b.explainBtn.disabled = true;
+  b.explainBtn.textContent = 'Claude is explaining…';
+  try {
+    const { explanation } = await api('/api/explain', { path: root, commit, block: b.id, attempts: b.attempts });
+    b.explanation.textContent = explanation;
+    b.explanation.hidden = false;
+    b.explainBtn.hidden = true;
+  } catch (e) {
+    setStatus(b, e.message, true);
+  } finally {
+    b.explainBtn.disabled = false;
+    b.explainBtn.textContent = 'Explain it to me';
+  }
+}
+
+function updateProgress(celebrate) {
+  const total = state.blocks.length;
+  const done = state.blocks.filter((b) => b.correct).length;
+  $('progress').hidden = !total;
+  $('progress-text').textContent = `${done} / ${total} understood`;
+  $('progress-bar').max = total || 1;
+  $('progress-bar').value = done;
+  if (total && done === total) {
+    if (!document.querySelector('.done-banner')) {
+      $('main').prepend(el('div', 'done-banner', '🎉 You understand every change in this commit.'));
+    }
+    if (celebrate) confetti();
+  }
+}
+
+// ---------- confetti ----------
+
+let confettiRun = 0;
+
+function confetti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const canvas = $('confetti');
+  const ctx = canvas.getContext('2d');
+  const run = ++confettiRun;
+  const colors = ['#f94144', '#f8961e', '#f9c74f', '#43aa8b', '#4d96ff', '#9b5de5', '#f15bb5'];
+  const pieces = [];
+  const start = performance.now();
+  const SPAWN_MS = 3500;
+
+  const resize = () => { canvas.width = innerWidth; canvas.height = innerHeight; };
+  resize();
+  addEventListener('resize', resize);
+
+  const spawn = (n) => {
+    for (let i = 0; i < n; i++) {
+      pieces.push({
+        x: Math.random() * canvas.width,
+        y: -20 - Math.random() * 60,
+        w: 6 + Math.random() * 7,
+        h: 4 + Math.random() * 5,
+        vx: -1.5 + Math.random() * 3,
+        vy: 2 + Math.random() * 4,
+        rot: Math.random() * Math.PI,
+        vr: -0.2 + Math.random() * 0.4,
+        color: colors[(Math.random() * colors.length) | 0],
+      });
+    }
+  };
+
+  const frame = (now) => {
+    if (run !== confettiRun) return;
+    if (now - start < SPAWN_MS) spawn(5);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const p = pieces[i];
+      p.x += p.vx + Math.sin((now + i * 40) / 300);
+      p.y += p.vy;
+      p.rot += p.vr;
+      if (p.y > canvas.height + 20) { pieces.splice(i, 1); continue; }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    if (pieces.length || now - start < SPAWN_MS) requestAnimationFrame(frame);
+    else removeEventListener('resize', resize);
+  };
+  requestAnimationFrame(frame);
+}
+
+// ---------- start ----------
+
+const lastFolder = store('understand:lastFolder');
+if (lastFolder) loadRepo(lastFolder);
+</script>
+</body>
+</html>

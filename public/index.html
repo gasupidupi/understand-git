@@ -186,11 +186,16 @@ const state = { root: null, commit: null, blocks: [] };
 let loadSeq = 0; // guards against out-of-order responses when selections change quickly
 
 async function api(url, body) {
-  const res = await fetch(url, body && {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(url, body && {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Cannot reach the understand-git server. Is it still running? Start it with "npm start" and try again.');
+  }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
